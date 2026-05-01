@@ -2,12 +2,15 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
+  GetObjectAclCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3"
+
+export type ObjectVisibility = "public" | "private"
 
 export type SpacesCredentials = {
   accessKeyId: string
@@ -119,7 +122,9 @@ export function createSpacesClient(credentials: SpacesCredentials): {
       accessKeyId: credentials.accessKeyId,
       secretAccessKey: credentials.secretAccessKey,
     },
-    forcePathStyle: true,
+    // Dev proxy is simpler with path-style; production should use bucket host style
+    // so Spaces can apply bucket-level CORS headers correctly.
+    forcePathStyle: import.meta.env.DEV,
   })
 
   return { client, parsed }
@@ -215,7 +220,8 @@ export async function uploadFiles(
   client: S3Client,
   bucket: string,
   prefix: string,
-  files: File[]
+  files: File[],
+  visibility: ObjectVisibility = "private"
 ): Promise<void> {
   for (const file of files) {
     await client.send(
@@ -224,6 +230,7 @@ export async function uploadFiles(
         Key: `${prefix}${file.name}`,
         Body: file,
         ContentType: file.type || "application/octet-stream",
+        ACL: visibility === "public" ? "public-read" : "private",
       })
     )
   }
@@ -413,7 +420,8 @@ export async function writeTextFile(
   client: S3Client,
   bucket: string,
   key: string,
-  content: string
+  content: string,
+  visibility: ObjectVisibility = "private"
 ): Promise<void> {
   await client.send(
     new PutObjectCommand({
@@ -421,8 +429,33 @@ export async function writeTextFile(
       Key: key,
       Body: content,
       ContentType: "text/plain; charset=utf-8",
+      ACL: visibility === "public" ? "public-read" : "private",
     })
   )
+}
+
+export async function getObjectVisibility(
+  client: S3Client,
+  bucket: string,
+  key: string
+): Promise<ObjectVisibility> {
+  const acl = await client.send(
+    new GetObjectAclCommand({
+      Bucket: bucket,
+      Key: key,
+    })
+  )
+
+  const isPublic = (acl.Grants ?? []).some((grant) => {
+    const granteeUri = grant.Grantee?.URI ?? ""
+    const isAllUsersGroup =
+      granteeUri === "http://acs.amazonaws.com/groups/global/AllUsers" ||
+      granteeUri === "https://acs.amazonaws.com/groups/global/AllUsers"
+
+    return isAllUsersGroup && grant.Permission === "READ"
+  })
+
+  return isPublic ? "public" : "private"
 }
 
 export function toPublicObjectUrl(publicBaseUrl: string, key: string): string {

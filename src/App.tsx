@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   AlertTriangle,
-  Copy,
+  ChevronRight,
   FilePenLine,
   FolderPlus,
+  FolderUp,
+  Info,
   Globe,
+  Link2,
   LoaderCircle,
+  Lock,
   LogOut,
   Pencil,
   RefreshCw,
@@ -55,7 +59,9 @@ import {
   createSpacesClient,
   deleteFile,
   deleteFolder,
+  getObjectVisibility,
   listNodes,
+  type ObjectVisibility,
   parseSpacesBucketUrl,
   readTextFile,
   renameFile,
@@ -70,6 +76,17 @@ import {
 type Locale = "tr" | "en"
 type ProviderId = "digitalocean_spaces" | "amazon_s3" | "cloudflare_r2"
 type AppMode = "signed-out" | "restoring" | "ready"
+type VisibilityState = ObjectVisibility | "checking" | "unknown"
+type UploadMode = "batch" | "per-file"
+type UploadStatus = "queued" | "uploading" | "uploaded" | "failed"
+
+type UploadDraft = {
+  id: string
+  file: File
+  visibility: ObjectVisibility
+  status: UploadStatus
+  error?: string
+}
 
 type PersistedState = {
   locale: Locale
@@ -134,7 +151,12 @@ type TranslationSet = {
   tableType: string
   tableSize: string
   tableDate: string
+  tableVisibility: string
   tableAction: string
+  visibilityPublic: string
+  visibilityPrivate: string
+  visibilityChecking: string
+  visibilityUnknown: string
   typeFolder: string
   typeFile: string
   emptyFolder: string
@@ -146,6 +168,32 @@ type TranslationSet = {
   operationsSummary: string
   activeFolder: string
   uploadProgress: (done: number, total: number) => string
+  uploadModalTitle: string
+  uploadModalDesc: string
+  uploadQueueCount: (count: number) => string
+  uploadChooseFiles: string
+  uploadAddMore: string
+  uploadClearQueue: string
+  uploadModeLabel: string
+  uploadModeBatch: string
+  uploadModePerFile: string
+  uploadBulkVisibilityLabel: string
+  uploadApplyBulkVisibility: string
+  uploadDestinationLabel: string
+  uploadListEmpty: string
+  uploadFileName: string
+  uploadFileType: string
+  uploadFileDestination: string
+  uploadFileVisibility: string
+  uploadFileStatus: string
+  uploadFileAction: string
+  uploadRemoveFile: string
+  uploadStart: string
+  uploadSomeFailed: (success: number, total: number) => string
+  uploadStatusQueued: string
+  uploadStatusUploading: string
+  uploadStatusUploaded: string
+  uploadStatusFailed: string
   createFolderTitle: string
   createFolderDesc: string
   folderName: string
@@ -156,7 +204,14 @@ type TranslationSet = {
   renameDesc: (name: string) => string
   newName: string
   save: string
+  saveAs: string
   textEditorTitle: string
+  saveVisibilityTitle: string
+  saveVisibilityDesc: string
+  saveVisibilityPublic: string
+  saveVisibilityPublicDesc: string
+  saveVisibilityPrivate: string
+  saveVisibilityPrivateDesc: string
   loadingFile: string
   close: string
   deleteConfirmTitle: string
@@ -241,7 +296,12 @@ const I18N: Record<Locale, TranslationSet> = {
     tableType: "Tür",
     tableSize: "Boyut",
     tableDate: "Tarih",
+    tableVisibility: "Erişim",
     tableAction: "İşlem",
+    visibilityPublic: "Public",
+    visibilityPrivate: "Private",
+    visibilityChecking: "Kontrol ediliyor",
+    visibilityUnknown: "Bilinmiyor",
     typeFolder: "Klasör",
     typeFile: "Dosya",
     emptyFolder: "Bu klasörde dosya bulunamadı.",
@@ -253,6 +313,32 @@ const I18N: Record<Locale, TranslationSet> = {
     operationsSummary: "Bu panelde dosya görüntüleme, çoklu yükleme, klasör oluşturma, silme, yeniden adlandırma, bağlantı kopyalama ve metin düzenleme işlemleri desteklenir.",
     activeFolder: "Aktif klasör",
     uploadProgress: (done, total) => `Yükleme ilerlemesi: ${done}/${total}`,
+    uploadModalTitle: "Dosya yükleme merkezi",
+    uploadModalDesc: "Birden fazla dosya seçin, hedefi kontrol edin ve erişim izinlerini toplu veya dosya bazlı yönetin.",
+    uploadQueueCount: (count) => `Kuyruktaki dosya: ${count}`,
+    uploadChooseFiles: "Dosya seç",
+    uploadAddMore: "Daha fazla ekle",
+    uploadClearQueue: "Kuyruğu temizle",
+    uploadModeLabel: "Yükleme tipi",
+    uploadModeBatch: "Toplu yükleme",
+    uploadModePerFile: "Dosya bazlı yükleme",
+    uploadBulkVisibilityLabel: "Toplu izin",
+    uploadApplyBulkVisibility: "Toplu izni tüm dosyalara uygula",
+    uploadDestinationLabel: "Yükleme hedefi",
+    uploadListEmpty: "Henüz dosya seçmediniz. Başlamak için dosya ekleyin.",
+    uploadFileName: "Dosya",
+    uploadFileType: "Tür",
+    uploadFileDestination: "Hedef",
+    uploadFileVisibility: "İzin",
+    uploadFileStatus: "Durum",
+    uploadFileAction: "İşlem",
+    uploadRemoveFile: "Çıkar",
+    uploadStart: "Yüklemeyi başlat",
+    uploadSomeFailed: (success, total) => `${success}/${total} dosya yüklendi. Kalan dosyalarda hata var.`,
+    uploadStatusQueued: "Kuyrukta",
+    uploadStatusUploading: "Yükleniyor",
+    uploadStatusUploaded: "Yüklendi",
+    uploadStatusFailed: "Hata",
     createFolderTitle: "Yeni klasör oluştur",
     createFolderDesc: "Klasör, mevcut dizin altına eklenecektir.",
     folderName: "Klasör adı",
@@ -263,7 +349,14 @@ const I18N: Record<Locale, TranslationSet> = {
     renameDesc: (name) => `Mevcut ad: ${name}`,
     newName: "Yeni ad",
     save: "Kaydet",
+    saveAs: "Bu şekilde kaydet",
     textEditorTitle: "Metin düzenleyici",
+    saveVisibilityTitle: "Kaydetme tipi seçin",
+    saveVisibilityDesc: "Bu .txt dosyası için erişim türünü belirleyin.",
+    saveVisibilityPublic: "Public (herkese açık)",
+    saveVisibilityPublicDesc: "Dosya bağlantısını bilen herkes okuyabilir.",
+    saveVisibilityPrivate: "Private (erişime kapalı)",
+    saveVisibilityPrivateDesc: "Dosya yalnızca yetkili anahtarlarla erişilebilir.",
     loadingFile: "Dosya yükleniyor",
     close: "Kapat",
     deleteConfirmTitle: "Silme işlemi onayı",
@@ -338,7 +431,12 @@ const I18N: Record<Locale, TranslationSet> = {
     tableType: "Type",
     tableSize: "Size",
     tableDate: "Date",
+    tableVisibility: "Access",
     tableAction: "Action",
+    visibilityPublic: "Public",
+    visibilityPrivate: "Private",
+    visibilityChecking: "Checking",
+    visibilityUnknown: "Unknown",
     typeFolder: "Folder",
     typeFile: "File",
     emptyFolder: "No files found in this folder.",
@@ -350,6 +448,32 @@ const I18N: Record<Locale, TranslationSet> = {
     operationsSummary: "This panel supports file browsing, multi-upload, folder creation, delete, rename, link copy, and text editing.",
     activeFolder: "Active folder",
     uploadProgress: (done, total) => `Upload progress: ${done}/${total}`,
+    uploadModalTitle: "Upload center",
+    uploadModalDesc: "Select multiple files, review destination, and manage permissions in batch or per file.",
+    uploadQueueCount: (count) => `Files in queue: ${count}`,
+    uploadChooseFiles: "Choose files",
+    uploadAddMore: "Add more",
+    uploadClearQueue: "Clear queue",
+    uploadModeLabel: "Upload mode",
+    uploadModeBatch: "Batch upload",
+    uploadModePerFile: "Per-file upload",
+    uploadBulkVisibilityLabel: "Batch visibility",
+    uploadApplyBulkVisibility: "Apply batch visibility to all files",
+    uploadDestinationLabel: "Upload destination",
+    uploadListEmpty: "No files selected yet. Add files to start.",
+    uploadFileName: "File",
+    uploadFileType: "Type",
+    uploadFileDestination: "Destination",
+    uploadFileVisibility: "Visibility",
+    uploadFileStatus: "Status",
+    uploadFileAction: "Action",
+    uploadRemoveFile: "Remove",
+    uploadStart: "Start upload",
+    uploadSomeFailed: (success, total) => `${success}/${total} files uploaded. Some files failed.`,
+    uploadStatusQueued: "Queued",
+    uploadStatusUploading: "Uploading",
+    uploadStatusUploaded: "Uploaded",
+    uploadStatusFailed: "Failed",
     createFolderTitle: "Create new folder",
     createFolderDesc: "The folder will be created under the current directory.",
     folderName: "Folder name",
@@ -360,7 +484,14 @@ const I18N: Record<Locale, TranslationSet> = {
     renameDesc: (name) => `Current name: ${name}`,
     newName: "New name",
     save: "Save",
+    saveAs: "Save this way",
     textEditorTitle: "Text editor",
+    saveVisibilityTitle: "Choose save visibility",
+    saveVisibilityDesc: "Select how this .txt file should be stored.",
+    saveVisibilityPublic: "Public (publicly accessible)",
+    saveVisibilityPublicDesc: "Anyone with the link can read this file.",
+    saveVisibilityPrivate: "Private (restricted)",
+    saveVisibilityPrivateDesc: "Only authorized credentials can access this file.",
     loadingFile: "Loading file",
     close: "Close",
     deleteConfirmTitle: "Delete confirmation",
@@ -437,6 +568,21 @@ function buildRenamedKey(prefix: string, value: string, isFolder: boolean): stri
   return isFolder ? `${prefix}${sanitized}/` : `${prefix}${sanitized}`
 }
 
+function makeUploadDraft(file: File, visibility: ObjectVisibility): UploadDraft {
+  const id = `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`
+
+  return {
+    id,
+    file,
+    visibility,
+    status: "queued",
+  }
+}
+
+function buildUploadDestination(prefix: string, fileName: string): string {
+  return `/${prefix}${fileName}`
+}
+
 function App() {
   const [locale, setLocale] = useState<Locale>("tr")
   const [provider, setProvider] = useState<ProviderId>("digitalocean_spaces")
@@ -463,9 +609,18 @@ function App() {
   const [editorTarget, setEditorTarget] = useState<SpaceNode | null>(null)
   const [editorContent, setEditorContent] = useState("")
   const [editorLoading, setEditorLoading] = useState(false)
+  const [isSaveVisibilityOpen, setIsSaveVisibilityOpen] = useState(false)
+  const [pendingSaveVisibility, setPendingSaveVisibility] = useState<ObjectVisibility>("private")
+  const [visibilityByKey, setVisibilityByKey] = useState<Record<string, VisibilityState>>({})
+
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
+  const [uploadMode, setUploadMode] = useState<UploadMode>("batch")
+  const [bulkUploadVisibility, setBulkUploadVisibility] = useState<ObjectVisibility>("private")
+  const [uploadDrafts, setUploadDrafts] = useState<UploadDraft[]>([])
 
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const uploadPickerRef = useRef<HTMLInputElement>(null)
+  const visibilityRunRef = useRef(0)
 
   const text = I18N[locale]
 
@@ -617,6 +772,20 @@ function App() {
     return error instanceof Error ? error.message : fallback
   }
 
+  function getVisibilityLabel(visibility: VisibilityState): string {
+    if (visibility === "public") return text.visibilityPublic
+    if (visibility === "private") return text.visibilityPrivate
+    if (visibility === "checking") return text.visibilityChecking
+    return text.visibilityUnknown
+  }
+
+  function getUploadStatusLabel(status: UploadStatus): string {
+    if (status === "uploading") return text.uploadStatusUploading
+    if (status === "uploaded") return text.uploadStatusUploaded
+    if (status === "failed") return text.uploadStatusFailed
+    return text.uploadStatusQueued
+  }
+
   async function connectAndLoad(
     prefix = "",
     options?: { silentSuccess?: boolean; onError?: () => void }
@@ -636,6 +805,44 @@ function App() {
       setIsAuthenticated(true)
       setAppMode("ready")
       setSelectedKeys([])
+      visibilityRunRef.current += 1
+
+      const fileNodes = items.filter((item) => item.type === "file")
+      if (fileNodes.length > 0) {
+        const runId = visibilityRunRef.current
+        const nextState: Record<string, VisibilityState> = {}
+        fileNodes.forEach((node) => {
+          nextState[node.key] = "checking"
+        })
+        setVisibilityByKey(nextState)
+
+        void Promise.all(
+          fileNodes.map(async (node): Promise<readonly [string, VisibilityState]> => {
+            try {
+              const visibility = await getObjectVisibility(
+                connection.client,
+                connection.parsed.bucket,
+                node.key
+              )
+              return [node.key, visibility] as const
+            } catch {
+              return [node.key, "unknown" as const]
+            }
+          })
+        ).then((results) => {
+          if (visibilityRunRef.current !== runId) {
+            return
+          }
+
+          const resolved: Record<string, VisibilityState> = {}
+          results.forEach(([key, visibility]) => {
+            resolved[key] = visibility
+          })
+          setVisibilityByKey(resolved)
+        })
+      } else {
+        setVisibilityByKey({})
+      }
 
       // Apply CORS policy so the app works from any origin (e.g. GitHub Pages).
       // Runs silently — a failure here does not block the user.
@@ -679,27 +886,106 @@ function App() {
     setSelectedKeys([])
   }
 
-  async function handleUpload(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
-    const files = Array.from(event.target.files ?? [])
-    event.target.value = ""
-
-    if (files.length === 0 || !connection) {
+  function queueFilesForUpload(files: File[]): void {
+    if (files.length === 0) {
       return
     }
 
+    setUploadDrafts((prev) => [
+      ...prev,
+      ...files.map((file) => makeUploadDraft(file, bulkUploadVisibility)),
+    ])
+  }
+
+  function handleUploadPickerChange(event: React.ChangeEvent<HTMLInputElement>): void {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ""
+    queueFilesForUpload(files)
+  }
+
+  function applyBulkVisibilityToQueuedFiles(): void {
+    setUploadDrafts((prev) => prev.map((item) => ({ ...item, visibility: bulkUploadVisibility })))
+  }
+
+  async function handleUploadFromQueue(): Promise<void> {
+    if (!connection || uploadDrafts.length === 0) {
+      return
+    }
+
+    const queue = [...uploadDrafts]
+    let successCount = 0
+
     setBusyMessage(text.busyUploadingFiles)
-    setUploadProgress({ done: 0, total: files.length })
+    setUploadProgress({ done: 0, total: queue.length })
 
     try {
-      for (let index = 0; index < files.length; index += 1) {
-        await uploadFiles(connection.client, connection.parsed.bucket, currentPrefix, [files[index]])
-        setUploadProgress({ done: index + 1, total: files.length })
+      for (let index = 0; index < queue.length; index += 1) {
+        const item = queue[index]
+        const visibility = uploadMode === "batch" ? bulkUploadVisibility : item.visibility
+
+        setUploadDrafts((prev) =>
+          prev.map((draft) =>
+            draft.id === item.id
+              ? {
+                  ...draft,
+                  status: "uploading",
+                  error: undefined,
+                }
+              : draft
+          )
+        )
+
+        try {
+          await uploadFiles(
+            connection.client,
+            connection.parsed.bucket,
+            currentPrefix,
+            [item.file],
+            visibility
+          )
+
+          successCount += 1
+          setUploadDrafts((prev) =>
+            prev.map((draft) =>
+              draft.id === item.id
+                ? {
+                    ...draft,
+                    status: "uploaded",
+                    error: undefined,
+                  }
+                : draft
+            )
+          )
+        } catch (error) {
+          const message = getErrorMessage(error, text.errorGeneric)
+          setUploadDrafts((prev) =>
+            prev.map((draft) =>
+              draft.id === item.id
+                ? {
+                    ...draft,
+                    status: "failed",
+                    error: message,
+                  }
+                : draft
+            )
+          )
+        }
+
+        setUploadProgress({ done: index + 1, total: queue.length })
       }
 
-      toast.success(text.successFilesUploaded(files.length))
-      await connectAndLoad(currentPrefix, { silentSuccess: true })
-    } catch (error) {
-      toast.error(getErrorMessage(error, text.errorGeneric))
+      if (successCount > 0) {
+        toast.success(text.successFilesUploaded(successCount))
+        await connectAndLoad(currentPrefix, { silentSuccess: true })
+      }
+
+      if (successCount !== queue.length) {
+        toast.error(text.uploadSomeFailed(successCount, queue.length))
+        return
+      }
+
+      setUploadDrafts([])
+      setIsUploadModalOpen(false)
     } finally {
       setBusyMessage(null)
       setUploadProgress(null)
@@ -746,7 +1032,7 @@ function App() {
     }
   }
 
-  async function saveTextEditor(): Promise<void> {
+  async function saveTextEditor(visibility: ObjectVisibility): Promise<void> {
     if (!connection || !editorTarget) {
       return
     }
@@ -754,8 +1040,15 @@ function App() {
     setBusyMessage(text.busySavingText)
 
     try {
-      await writeTextFile(connection.client, connection.parsed.bucket, editorTarget.key, editorContent)
+      await writeTextFile(
+        connection.client,
+        connection.parsed.bucket,
+        editorTarget.key,
+        editorContent,
+        visibility
+      )
       toast.success(text.successTextSaved)
+      setIsSaveVisibilityOpen(false)
       setEditorTarget(null)
       await connectAndLoad(currentPrefix, { silentSuccess: true })
     } catch (error) {
@@ -1018,9 +1311,7 @@ function App() {
               <p className="text-sm text-slate-600">{text.dashboardSubtitle}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">{text.statusProvider}: {getProviderLabel(locale, provider)}</Badge>
               {parsedPreview ? <Badge variant="secondary">{text.statusBucket}: {parsedPreview.bucket}</Badge> : null}
-              {parsedPreview ? <Badge variant="outline">{text.statusRegion}: {parsedPreview.region}</Badge> : null}
               <Badge>{isAuthenticated ? text.statusConnected : text.statusReady}</Badge>
               <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1">
                 <Globe className="size-4 text-slate-600" />
@@ -1058,7 +1349,7 @@ function App() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => setIsUploadModalOpen(true)}
                   disabled={busyMessage !== null}
                 >
                   <Upload className="size-4" />
@@ -1086,24 +1377,28 @@ function App() {
 
               <Separator />
 
-              <div className="flex flex-wrap items-center gap-1 text-xs text-slate-600">
-                {breadcrumbs.map((item, index) => (
-                  <button
-                    key={item.prefix || "root"}
-                    type="button"
-                    className="rounded-md px-1.5 py-1 hover:bg-slate-200/70"
-                    onClick={() => connectAndLoad(item.prefix, { silentSuccess: true })}
-                  >
-                    {item.label}
-                    {index < breadcrumbs.length - 1 ? " /" : ""}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2 text-xs text-slate-600">
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                  {breadcrumbs.map((item, index) => (
+                    <div key={item.prefix || "root"} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-md px-1.5 py-1 font-medium hover:bg-slate-200/70"
+                        onClick={() => connectAndLoad(item.prefix, { silentSuccess: true })}
+                      >
+                        {item.label}
+                      </button>
+                      {index < breadcrumbs.length - 1 ? <ChevronRight className="size-3 text-slate-400" /> : null}
+                    </div>
+                  ))}
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
                   disabled={currentPrefix === ""}
                   onClick={() => connectAndLoad(getParentPrefix(currentPrefix), { silentSuccess: true })}
                 >
+                  <FolderUp className="size-4" />
                   {text.parentFolder}
                 </Button>
               </div>
@@ -1139,13 +1434,14 @@ function App() {
                         <TableHead>{text.tableType}</TableHead>
                         <TableHead>{text.tableSize}</TableHead>
                         <TableHead>{text.tableDate}</TableHead>
+                        <TableHead>{text.tableVisibility}</TableHead>
                         <TableHead className="text-right">{text.tableAction}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {nodes.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={6} className="py-10 text-center text-sm text-slate-500">
+                          <TableCell colSpan={7} className="py-10 text-center text-sm text-slate-500">
                             {isAuthenticated ? text.emptyFolder : text.emptyBeforeConnect}
                           </TableCell>
                         </TableRow>
@@ -1180,6 +1476,20 @@ function App() {
                             <TableCell>{node.type === "folder" ? "-" : formatBytes(node.size)}</TableCell>
                             <TableCell>{formatTimestamp(node.lastModified, locale)}</TableCell>
                             <TableCell>
+                              {node.type === "folder" ? (
+                                "-"
+                              ) : (
+                                <Badge variant={visibilityByKey[node.key] === "public" ? "default" : "outline"}>
+                                  {visibilityByKey[node.key] === "public" ? (
+                                    <Globe className="mr-1 size-3" />
+                                  ) : (
+                                    <Lock className="mr-1 size-3" />
+                                  )}
+                                  {getVisibilityLabel(visibilityByKey[node.key] ?? "unknown")}
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
                               <div className="flex justify-end gap-1">
                                 <Button
                                   size="icon-sm"
@@ -1187,7 +1497,7 @@ function App() {
                                   onClick={() => copyPublicLink(node)}
                                   title={text.copyLink}
                                 >
-                                  <Copy className="size-4" />
+                                  <Link2 className="size-4" />
                                 </Button>
 
                                 {node.type === "file" && node.name.toLowerCase().endsWith(".txt") ? (
@@ -1236,14 +1546,6 @@ function App() {
                 {uploadProgress ? <p>{text.uploadProgress(uploadProgress.done, uploadProgress.total)}</p> : null}
               </TabsContent>
             </Tabs>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={handleUpload}
-            />
           </CardContent>
         </Card>
 
@@ -1251,6 +1553,222 @@ function App() {
           {text.productBy}
         </footer>
       </div>
+
+      <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
+        <DialogContent className="top-[10px] left-[10px] right-[10px] bottom-[10px] h-auto w-auto max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-2xl p-0 sm:max-w-none">
+          <div className="flex h-full flex-col">
+            <div className="border-b bg-gradient-to-r from-cyan-50 via-sky-50 to-white px-5 py-4">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-lg">
+                  <Upload className="size-5 text-sky-600" />
+                  {text.uploadModalTitle}
+                </DialogTitle>
+                <DialogDescription>{text.uploadModalDesc}</DialogDescription>
+              </DialogHeader>
+            </div>
+
+            <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[330px_1fr]">
+              <aside className="space-y-4 border-r bg-slate-50/70 p-4">
+                <div className="rounded-lg border bg-white p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {text.uploadQueueCount(uploadDrafts.length)}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => uploadPickerRef.current?.click()}>
+                      <Upload className="size-4" />
+                      {uploadDrafts.length === 0 ? text.uploadChooseFiles : text.uploadAddMore}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={uploadDrafts.length === 0}
+                      onClick={() => setUploadDrafts([])}
+                    >
+                      {text.uploadClearQueue}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-white p-3">
+                  <Label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    {text.uploadModeLabel}
+                  </Label>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <Button
+                      size="sm"
+                      variant={uploadMode === "batch" ? "default" : "outline"}
+                      onClick={() => setUploadMode("batch")}
+                    >
+                      {text.uploadModeBatch}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={uploadMode === "per-file" ? "default" : "outline"}
+                      onClick={() => setUploadMode("per-file")}
+                    >
+                      {text.uploadModePerFile}
+                    </Button>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    <Label htmlFor="bulk-upload-visibility">{text.uploadBulkVisibilityLabel}</Label>
+                    <select
+                      id="bulk-upload-visibility"
+                      value={bulkUploadVisibility}
+                      onChange={(event) => setBulkUploadVisibility(event.target.value as ObjectVisibility)}
+                      className="h-9 w-full rounded-lg border border-input bg-background px-2.5 text-sm"
+                    >
+                      <option value="private">{text.visibilityPrivate}</option>
+                      <option value="public">{text.visibilityPublic}</option>
+                    </select>
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      disabled={uploadDrafts.length === 0}
+                      onClick={applyBulkVisibilityToQueuedFiles}
+                    >
+                      {text.uploadApplyBulkVisibility}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  <p className="flex items-start gap-2">
+                    <Info className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                      {text.uploadDestinationLabel}: <strong>{`/${currentPrefix || ""}`}</strong>
+                    </span>
+                  </p>
+                </div>
+              </aside>
+
+              <div className="min-h-0 p-4">
+                {uploadDrafts.length === 0 ? (
+                  <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-500">
+                    {text.uploadListEmpty}
+                  </div>
+                ) : (
+                  <ScrollArea className="h-full rounded-xl border bg-white">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{text.uploadFileName}</TableHead>
+                          <TableHead>{text.uploadFileType}</TableHead>
+                          <TableHead>{text.tableSize}</TableHead>
+                          <TableHead>{text.uploadFileDestination}</TableHead>
+                          <TableHead>{text.uploadFileVisibility}</TableHead>
+                          <TableHead>{text.uploadFileStatus}</TableHead>
+                          <TableHead className="text-right">{text.uploadFileAction}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {uploadDrafts.map((item) => {
+                          const effectiveVisibility =
+                            uploadMode === "batch" ? bulkUploadVisibility : item.visibility
+
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell className="max-w-[220px] truncate font-medium">{item.file.name}</TableCell>
+                              <TableCell>{item.file.type || "application/octet-stream"}</TableCell>
+                              <TableCell>{formatBytes(item.file.size)}</TableCell>
+                              <TableCell className="max-w-[260px] truncate text-xs text-slate-600">
+                                {buildUploadDestination(currentPrefix, item.file.name)}
+                              </TableCell>
+                              <TableCell>
+                                {uploadMode === "per-file" ? (
+                                  <select
+                                    value={item.visibility}
+                                    onChange={(event) => {
+                                      const nextVisibility = event.target.value as ObjectVisibility
+                                      setUploadDrafts((prev) =>
+                                        prev.map((draft) =>
+                                          draft.id === item.id
+                                            ? {
+                                                ...draft,
+                                                visibility: nextVisibility,
+                                              }
+                                            : draft
+                                        )
+                                      )
+                                    }}
+                                    className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+                                  >
+                                    <option value="private">{text.visibilityPrivate}</option>
+                                    <option value="public">{text.visibilityPublic}</option>
+                                  </select>
+                                ) : (
+                                  <Badge variant={effectiveVisibility === "public" ? "default" : "outline"}>
+                                    {effectiveVisibility === "public" ? (
+                                      <Globe className="mr-1 size-3" />
+                                    ) : (
+                                      <Lock className="mr-1 size-3" />
+                                    )}
+                                    {getVisibilityLabel(effectiveVisibility)}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <Badge
+                                  variant={
+                                    item.status === "uploaded"
+                                      ? "default"
+                                      : item.status === "failed"
+                                        ? "destructive"
+                                        : item.status === "uploading"
+                                          ? "secondary"
+                                          : "outline"
+                                  }
+                                >
+                                  {getUploadStatusLabel(item.status)}
+                                </Badge>
+                                {item.error ? <p className="mt-1 text-xs text-rose-600">{item.error}</p> : null}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  disabled={item.status === "uploading" || busyMessage !== null}
+                                  onClick={() =>
+                                    setUploadDrafts((prev) => prev.filter((draft) => draft.id !== item.id))
+                                  }
+                                >
+                                  {text.uploadRemoveFile}
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                )}
+              </div>
+            </div>
+
+            <DialogFooter className="border-t bg-white px-4 py-3">
+              <input
+                ref={uploadPickerRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={handleUploadPickerChange}
+              />
+              <Button variant="outline" onClick={() => setIsUploadModalOpen(false)}>
+                {text.close}
+              </Button>
+              <Button
+                disabled={uploadDrafts.length === 0 || busyMessage !== null}
+                onClick={handleUploadFromQueue}
+              >
+                <Upload className="size-4" />
+                {text.uploadStart}
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isCreateFolderOpen} onOpenChange={setIsCreateFolderOpen}>
         <DialogContent>
@@ -1323,9 +1841,50 @@ function App() {
             <Button variant="outline" onClick={() => setEditorTarget(null)}>
               {text.close}
             </Button>
-            <Button disabled={editorLoading} onClick={saveTextEditor}>
+            <Button disabled={editorLoading} onClick={() => setIsSaveVisibilityOpen(true)}>
               <FilePenLine className="size-4" />
               {text.save}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isSaveVisibilityOpen} onOpenChange={setIsSaveVisibilityOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{text.saveVisibilityTitle}</DialogTitle>
+            <DialogDescription>{text.saveVisibilityDesc}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <button
+              type="button"
+              className={`w-full rounded-lg border p-3 text-left ${
+                pendingSaveVisibility === "public" ? "border-sky-400 bg-sky-50" : "border-slate-200"
+              }`}
+              onClick={() => setPendingSaveVisibility("public")}
+            >
+              <p className="font-medium text-slate-900">{text.saveVisibilityPublic}</p>
+              <p className="text-sm text-slate-600">{text.saveVisibilityPublicDesc}</p>
+            </button>
+
+            <button
+              type="button"
+              className={`w-full rounded-lg border p-3 text-left ${
+                pendingSaveVisibility === "private" ? "border-slate-400 bg-slate-50" : "border-slate-200"
+              }`}
+              onClick={() => setPendingSaveVisibility("private")}
+            >
+              <p className="font-medium text-slate-900">{text.saveVisibilityPrivate}</p>
+              <p className="text-sm text-slate-600">{text.saveVisibilityPrivateDesc}</p>
+            </button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSaveVisibilityOpen(false)}>
+              {text.cancel}
+            </Button>
+            <Button onClick={() => saveTextEditor(pendingSaveVisibility)}>
+              <FilePenLine className="size-4" />
+              {text.saveAs}
             </Button>
           </DialogFooter>
         </DialogContent>

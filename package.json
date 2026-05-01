@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "spaces:cors": "node scripts/set-spaces-cors.mjs",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
