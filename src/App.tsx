@@ -50,6 +50,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import {
+  applyBucketCors,
   createFolder,
   createSpacesClient,
   deleteFile,
@@ -635,6 +636,10 @@ function App() {
       setIsAuthenticated(true)
       setAppMode("ready")
       setSelectedKeys([])
+
+      // Apply CORS policy so the app works from any origin (e.g. GitHub Pages).
+      // Runs silently — a failure here does not block the user.
+      applyBucketCors(connection.client, connection.parsed.bucket).catch(() => undefined)
 
       if (!options?.silentSuccess) {
         toast.success(text.loginSuccess)

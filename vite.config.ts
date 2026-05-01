@@ -146,6 +146,7 @@ function spacesProxyPlugin(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: process.env.NODE_ENV === 'production' ? '/cloudstorage-filemanager/' : '/',
   plugins: [react(), tailwindcss(), spacesProxyPlugin()],
   resolve: {
     alias: {

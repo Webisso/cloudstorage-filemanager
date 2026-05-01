@@ -4,6 +4,7 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
+  PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3"
@@ -122,6 +123,30 @@ export function createSpacesClient(credentials: SpacesCredentials): {
   })
 
   return { client, parsed }
+}
+
+/**
+ * Applies a permissive CORS policy to the bucket so the app can be used
+ * from any origin (including GitHub Pages). Safe to call on every login —
+ * it is idempotent.
+ */
+export async function applyBucketCors(client: S3Client, bucket: string): Promise<void> {
+  await client.send(
+    new PutBucketCorsCommand({
+      Bucket: bucket,
+      CORSConfiguration: {
+        CORSRules: [
+          {
+            AllowedOrigins: ['*'],
+            AllowedMethods: ['GET', 'PUT', 'POST', 'DELETE', 'HEAD'],
+            AllowedHeaders: ['*'],
+            ExposeHeaders: ['ETag', 'Content-Length'],
+            MaxAgeSeconds: 3600,
+          },
+        ],
+      },
+    })
+  )
 }
 
 function sortNodes(nodes: SpaceNode[]): SpaceNode[] {
