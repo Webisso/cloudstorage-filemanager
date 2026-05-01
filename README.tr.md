@@ -1,5 +1,11 @@
 # CloudStorage File Manager
 
+[![Canli Demo](https://img.shields.io/badge/Canli%20Demo-Online-16a34a?style=flat)](https://webisso.github.io/cloudstorage-filemanager/)
+[![Lisans](https://img.shields.io/github/license/Webisso/cloudstorage-filemanager?style=flat)](LICENSE)
+[![Son Commit](https://img.shields.io/github/last-commit/Webisso/cloudstorage-filemanager?style=flat)](https://github.com/Webisso/cloudstorage-filemanager/commits/main)
+[![Yildizlar](https://img.shields.io/github/stars/Webisso/cloudstorage-filemanager?style=flat)](https://github.com/Webisso/cloudstorage-filemanager/stargazers)
+[![Issues](https://img.shields.io/github/issues/Webisso/cloudstorage-filemanager?style=flat)](https://github.com/Webisso/cloudstorage-filemanager/issues)
+
 DigitalOcean Spaces (S3 uyumlu) icin gelistirilmis modern web tabanli dosya yonetim araci.
 
 English documentation: [README.md](README.md)
@@ -145,4 +151,4 @@ npm run spaces:cors
 
 ## Lisans
 
-MIT (veya tercih edilen lisans, gerekirse guncelleyin).
+MIT

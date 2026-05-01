@@ -1,5 +1,11 @@
 # CloudStorage File Manager
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Online-16a34a?style=flat)](https://webisso.github.io/cloudstorage-filemanager/)
+[![License](https://img.shields.io/github/license/Webisso/cloudstorage-filemanager?style=flat)](LICENSE)
+[![Last Commit](https://img.shields.io/github/last-commit/Webisso/cloudstorage-filemanager?style=flat)](https://github.com/Webisso/cloudstorage-filemanager/commits/main)
+[![Stars](https://img.shields.io/github/stars/Webisso/cloudstorage-filemanager?style=flat)](https://github.com/Webisso/cloudstorage-filemanager/stargazers)
+[![Issues](https://img.shields.io/github/issues/Webisso/cloudstorage-filemanager?style=flat)](https://github.com/Webisso/cloudstorage-filemanager/issues)
+
 Modern web-based file manager for DigitalOcean Spaces (S3-compatible), built with React + TypeScript + Vite.
 
 Turkish documentation: [README.tr.md](README.tr.md)
@@ -148,4 +154,4 @@ npm run spaces:cors
 
 ## License
 
-MIT (or your preferred license, update as needed).
+MIT
