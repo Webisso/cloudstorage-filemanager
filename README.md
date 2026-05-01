@@ -1,73 +1,151 @@
-# React + TypeScript + Vite
+# CloudStorage File Manager
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Modern web-based file manager for DigitalOcean Spaces (S3-compatible), built with React + TypeScript + Vite.
 
-Currently, two official plugins are available:
+Turkish documentation: [README.tr.md](README.tr.md)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Live Demo
 
-## React Compiler
+- Production URL: https://webisso.github.io/cloudstorage-filemanager/
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## What This Project Is
 
-## Expanding the ESLint configuration
+CloudStorage File Manager is an admin-style browser application designed to manage object storage quickly from a single interface.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+It provides:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- Secure login with API credentials and bucket URL
+- File/folder browsing with breadcrumb navigation
+- Multi-file upload with advanced Upload Center
+- Per-file and batch visibility control (public/private)
+- Text file editing with save visibility selection
+- Rename, delete, and public-link copy actions
+- Session persistence and bilingual UI (EN/TR)
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Tech Stack
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- React 19
+- TypeScript
+- Vite 8
+- Tailwind CSS 4 + shadcn/base-ui components
+- AWS SDK v3 (S3 client + presigner)
+- Sonner for notifications
+
+## Key Features
+
+### Authentication and Session
+
+- Login with:
+  - Bucket URL
+  - Access key ID
+  - Secret access key
+- Optional keep-signed-in behavior via local storage
+- Session restore after refresh (F5)
+
+### File Management
+
+- List folders and files
+- Navigate directories with enhanced breadcrumb
+- Create folders
+- Rename files/folders
+- Delete selected items
+
+### Upload Center
+
+- Full-screen-like modal panel with margin overlay
+- Multi-file queue
+- Batch upload mode and per-file upload mode
+- ACL/visibility selection:
+  - Public (public-read)
+  - Private
+- Row-level upload status (queued/uploading/uploaded/failed)
+- Live upload progress with:
+  - Percentage
+  - Transfer speed (MB/s, 1-second moving average)
+
+### Visibility and Sharing
+
+- Visibility column in file table
+- Real ACL check per object (public/private)
+- Public link copy action
+
+### Text Editor
+
+- Open and edit .txt files in modal editor
+- Save with explicit visibility selection
+
+### Localization
+
+- English and Turkish UI texts
+
+## Project Structure
+
+- App shell and UI logic: src/App.tsx
+- Spaces operations and upload logic: src/lib/spaces.ts
+- Dev proxy and Vite config: vite.config.ts
+- Static assets: public/
+
+## Run Locally
+
+### Requirements
+
+- Node.js 18+
+- npm
+
+### Install
+
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+### Production Build
+
+```bash
+npm run build
+```
+
+## Deployment
+
+This project is configured for GitHub Pages using gh-pages.
+
+```bash
+npm run deploy
+```
+
+## CORS Note (DigitalOcean Spaces)
+
+For browser-based access, your bucket must have proper CORS configuration.
+
+Example policy requirements:
+
+- Allowed origin: https://webisso.github.io (or your domain)
+- Allowed methods: GET, PUT, POST, DELETE, HEAD
+- Allowed headers: *
+
+Utility script is included to set CORS from Node:
+
+```bash
+npm run spaces:cors
+```
+
+## Planned Features
+
+- Drag and drop upload support in Upload Center
+- Pause/resume/cancel upload queue controls
+- Upload conflict strategy (overwrite, rename, skip)
+- Search and filter for large directories
+- Sort options (name, size, date, visibility)
+- Bulk ACL update action for selected files
+- Better mobile table layout (collapsible details)
+- Optional role-based presets for visibility defaults
+- Optional dark theme toggle
+
+## License
+
+MIT (or your preferred license, update as needed).

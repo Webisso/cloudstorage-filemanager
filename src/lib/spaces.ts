@@ -272,6 +272,55 @@ export async function uploadFiles(
   }
 }
 
+export async function uploadFileWithProgress(
+  client: S3Client,
+  bucket: string,
+  key: string,
+  file: File,
+  visibility: ObjectVisibility,
+  onProgress?: (loadedBytes: number, totalBytes: number) => void
+): Promise<void> {
+  const contentType = file.type || "application/octet-stream"
+  const acl = visibility === "public" ? "public-read" : "private"
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+    ACL: acl,
+  })
+
+  const signedUrl = await getSignedUrl(client, command, { expiresIn: 900 })
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress) return
+      const total = event.lengthComputable ? event.total : file.size
+      onProgress(event.loaded, total)
+    }
+
+    xhr.onerror = () => {
+      reject(new Error("Upload failed: network error"))
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(file.size, file.size)
+        resolve()
+      } else {
+        reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText || xhr.statusText}`))
+      }
+    }
+
+    xhr.open("PUT", signedUrl, true)
+    xhr.setRequestHeader("content-type", contentType)
+    xhr.setRequestHeader("x-amz-acl", acl)
+    xhr.send(file)
+  })
+}
+
 export async function createFolder(
   client: S3Client,
   bucket: string,

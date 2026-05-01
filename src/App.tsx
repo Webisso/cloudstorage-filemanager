@@ -68,7 +68,7 @@ import {
   type SpaceNode,
   type SpacesCredentials,
   toPublicObjectUrl,
-  uploadFiles,
+  uploadFileWithProgress,
   writeTextFile,
 } from "@/lib/spaces"
 
@@ -84,6 +84,8 @@ type UploadDraft = {
   file: File
   visibility: ObjectVisibility
   status: UploadStatus
+  progressPercent: number
+  speedMbps: number
   error?: string
 }
 
@@ -575,6 +577,8 @@ function makeUploadDraft(file: File, visibility: ObjectVisibility): UploadDraft 
     file,
     visibility,
     status: "queued",
+    progressPercent: 0,
+    speedMbps: 0,
   }
 }
 
@@ -925,6 +929,8 @@ function App() {
               ? {
                   ...draft,
                   status: "uploading",
+                  progressPercent: 0,
+                  speedMbps: 0,
                   error: undefined,
                 }
               : draft
@@ -932,12 +938,45 @@ function App() {
         )
 
         try {
-          await uploadFiles(
+          const speedWindow: Array<{ time: number; loadedBytes: number }> = []
+          await uploadFileWithProgress(
             connection.client,
             connection.parsed.bucket,
-            currentPrefix,
-            [item.file],
-            visibility
+            `${currentPrefix}${item.file.name}`,
+            item.file,
+            visibility,
+            (loadedBytes, totalBytes) => {
+              const now = performance.now()
+              speedWindow.push({ time: now, loadedBytes })
+
+              while (speedWindow.length > 1 && now - speedWindow[0].time > 1000) {
+                speedWindow.shift()
+              }
+
+              let speedMbps = 0
+              if (speedWindow.length >= 2) {
+                const first = speedWindow[0]
+                const last = speedWindow[speedWindow.length - 1]
+                const elapsedSec = Math.max((last.time - first.time) / 1000, 0.001)
+                const deltaBytes = Math.max(last.loadedBytes - first.loadedBytes, 0)
+                speedMbps = (deltaBytes / (1024 * 1024)) / elapsedSec
+              }
+
+              const basis = totalBytes > 0 ? totalBytes : item.file.size
+              const progressPercent = basis > 0 ? Math.min(100, (loadedBytes / basis) * 100) : 0
+
+              setUploadDrafts((prev) =>
+                prev.map((draft) =>
+                  draft.id === item.id
+                    ? {
+                        ...draft,
+                        progressPercent,
+                        speedMbps,
+                      }
+                    : draft
+                )
+              )
+            }
           )
 
           successCount += 1
@@ -947,6 +986,7 @@ function App() {
                 ? {
                     ...draft,
                     status: "uploaded",
+                    progressPercent: 100,
                     error: undefined,
                   }
                 : draft
@@ -1734,17 +1774,31 @@ function App() {
                                 {item.error ? <p className="mt-1 text-xs text-rose-600">{item.error}</p> : null}
                               </TableCell>
                               <TableCell className="text-right">
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  disabled={item.status === "uploading" || busyMessage !== null}
-                                  onClick={() =>
-                                    setUploadDrafts((prev) => prev.filter((draft) => draft.id !== item.id))
-                                  }
-                                >
-                                  <Trash2 className="size-4" />
-                                  {text.uploadRemoveFile}
-                                </Button>
+                                {item.status === "uploading" ? (
+                                  <div className="ml-auto w-44 space-y-1.5 text-left">
+                                    <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                                      <div
+                                        className="h-full rounded-full bg-sky-500 transition-[width] duration-150"
+                                        style={{ width: `${item.progressPercent.toFixed(1)}%` }}
+                                      />
+                                    </div>
+                                    <p className="text-xs text-slate-600">
+                                      {item.progressPercent.toFixed(1)}% • {item.speedMbps.toFixed(2)} MB/s
+                                    </p>
+                                  </div>
+                                ) : (
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    disabled={busyMessage !== null}
+                                    onClick={() =>
+                                      setUploadDrafts((prev) => prev.filter((draft) => draft.id !== item.id))
+                                    }
+                                  >
+                                    <Trash2 className="size-4" />
+                                    {text.uploadRemoveFile}
+                                  </Button>
+                                )}
                               </TableCell>
                             </TableRow>
                           )
