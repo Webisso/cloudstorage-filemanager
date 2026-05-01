@@ -9,6 +9,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 
 export type ObjectVisibility = "public" | "private"
 
@@ -224,15 +225,50 @@ export async function uploadFiles(
   visibility: ObjectVisibility = "private"
 ): Promise<void> {
   for (const file of files) {
-    await client.send(
-      new PutObjectCommand({
+    const key = `${prefix}${file.name}`
+    const contentType = file.type || "application/octet-stream"
+    const acl = visibility === "public" ? "public-read" : "private"
+
+    try {
+      await client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: file,
+          ContentType: contentType,
+          ACL: acl,
+        })
+      )
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const shouldFallback = message.includes("getReader")
+
+      if (!shouldFallback) {
+        throw error
+      }
+
+      const command = new PutObjectCommand({
         Bucket: bucket,
-        Key: `${prefix}${file.name}`,
-        Body: file,
-        ContentType: file.type || "application/octet-stream",
-        ACL: visibility === "public" ? "public-read" : "private",
+        Key: key,
+        ContentType: contentType,
+        ACL: acl,
       })
-    )
+
+      const signedUrl = await getSignedUrl(client, command, { expiresIn: 900 })
+      const response = await fetch(signedUrl, {
+        method: "PUT",
+        headers: {
+          "content-type": contentType,
+          "x-amz-acl": acl,
+        },
+        body: file,
+      })
+
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => "")
+        throw new Error(`Upload failed (${response.status}): ${bodyText || response.statusText}`)
+      }
+    }
   }
 }
 

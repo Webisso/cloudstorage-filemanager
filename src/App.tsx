@@ -31,7 +31,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -243,7 +242,7 @@ const DEFAULT_CREDENTIALS: SpacesCredentials = {
 
 const I18N: Record<Locale, TranslationSet> = {
   tr: {
-    appName: "WebissoLLC Storage Console",
+    appName: "CloudStorage File Manager",
     productBy: "WebissoLLC tarafından geliştirilmektedir",
     restoringSession: "Oturum geri yükleniyor",
     restoringHint: "Kayıtlı bağlantınız doğrulanıyor ve dosyalar hazırlanıyor.",
@@ -378,7 +377,7 @@ const I18N: Record<Locale, TranslationSet> = {
     errorRenameRequired: "Yeni ad boş olamaz.",
   },
   en: {
-    appName: "WebissoLLC Storage Console",
+    appName: "CloudStorage File Manager",
     productBy: "Built by WebissoLLC",
     restoringSession: "Restoring your session",
     restoringHint: "Validating saved connection and preparing your files.",
@@ -618,7 +617,6 @@ function App() {
   const [bulkUploadVisibility, setBulkUploadVisibility] = useState<ObjectVisibility>("private")
   const [uploadDrafts, setUploadDrafts] = useState<UploadDraft[]>([])
 
-  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
   const uploadPickerRef = useRef<HTMLInputElement>(null)
   const visibilityRunRef = useRef(0)
 
@@ -916,8 +914,6 @@ function App() {
     let successCount = 0
 
     setBusyMessage(text.busyUploadingFiles)
-    setUploadProgress({ done: 0, total: queue.length })
-
     try {
       for (let index = 0; index < queue.length; index += 1) {
         const item = queue[index]
@@ -971,7 +967,6 @@ function App() {
           )
         }
 
-        setUploadProgress({ done: index + 1, total: queue.length })
       }
 
       if (successCount > 0) {
@@ -988,7 +983,6 @@ function App() {
       setIsUploadModalOpen(false)
     } finally {
       setBusyMessage(null)
-      setUploadProgress(null)
     }
   }
 
@@ -1406,155 +1400,169 @@ function App() {
           </CardHeader>
 
           <CardContent>
-            <Tabs defaultValue="files" className="w-full">
-              <TabsList>
-                <TabsTrigger value="files">{text.tabFiles}</TabsTrigger>
-                <TabsTrigger value="about">{text.tabAbout}</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="files" className="pt-3">
-                <ScrollArea className="h-[480px] rounded-lg border border-slate-200/80 bg-white">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10 text-center">
+            <ScrollArea className="h-[480px] rounded-lg border border-slate-200/80 bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected}
+                        onChange={(event) => {
+                          if (event.target.checked) {
+                            setSelectedKeys(nodes.map((node) => node.key))
+                          } else {
+                            setSelectedKeys([])
+                          }
+                        }}
+                      />
+                    </TableHead>
+                    <TableHead>{text.tableName}</TableHead>
+                    <TableHead>{text.tableType}</TableHead>
+                    <TableHead>{text.tableSize}</TableHead>
+                    <TableHead>{text.tableDate}</TableHead>
+                    <TableHead>{text.tableVisibility}</TableHead>
+                    <TableHead className="text-right">{text.tableAction}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {nodes.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={7} className="py-10 text-center text-sm text-slate-500">
+                        {isAuthenticated ? text.emptyFolder : text.emptyBeforeConnect}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    nodes.map((node) => (
+                      <TableRow key={node.key}>
+                        <TableCell className="text-center">
                           <input
                             type="checkbox"
-                            checked={isAllSelected}
-                            onChange={(event) => {
-                              if (event.target.checked) {
-                                setSelectedKeys(nodes.map((node) => node.key))
-                              } else {
-                                setSelectedKeys([])
-                              }
-                            }}
+                            checked={selectedKeys.includes(node.key)}
+                            onChange={() => toggleSelection(node.key)}
                           />
-                        </TableHead>
-                        <TableHead>{text.tableName}</TableHead>
-                        <TableHead>{text.tableType}</TableHead>
-                        <TableHead>{text.tableSize}</TableHead>
-                        <TableHead>{text.tableDate}</TableHead>
-                        <TableHead>{text.tableVisibility}</TableHead>
-                        <TableHead className="text-right">{text.tableAction}</TableHead>
+                        </TableCell>
+                        <TableCell className="max-w-[220px] truncate font-medium">
+                          {node.type === "folder" ? (
+                            <button
+                              type="button"
+                              className="text-left text-sky-700 hover:underline"
+                              onClick={() => connectAndLoad(node.key, { silentSuccess: true })}
+                            >
+                              {node.name}
+                            </button>
+                          ) : (
+                            node.name
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={node.type === "folder" ? "secondary" : "outline"}>
+                            {node.type === "folder" ? text.typeFolder : text.typeFile}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{node.type === "folder" ? "-" : formatBytes(node.size)}</TableCell>
+                        <TableCell>{formatTimestamp(node.lastModified, locale)}</TableCell>
+                        <TableCell>
+                          {node.type === "folder" ? (
+                            "-"
+                          ) : (
+                            <Badge variant={visibilityByKey[node.key] === "public" ? "default" : "outline"}>
+                              {visibilityByKey[node.key] === "checking" ? (
+                                <LoaderCircle className="size-3 animate-spin" />
+                              ) : visibilityByKey[node.key] === "public" ? (
+                                <>
+                                  <Globe className="mr-1 size-3" />
+                                  {getVisibilityLabel("public")}
+                                </>
+                              ) : visibilityByKey[node.key] === "private" ? (
+                                <>
+                                  <Lock className="mr-1 size-3" />
+                                  {getVisibilityLabel("private")}
+                                </>
+                              ) : (
+                                <>
+                                  <Lock className="mr-1 size-3" />
+                                  {getVisibilityLabel("unknown")}
+                                </>
+                              )}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => copyPublicLink(node)}
+                              title={text.copyLink}
+                            >
+                              <Link2 className="size-4" />
+                            </Button>
+
+                            {node.type === "file" && node.name.toLowerCase().endsWith(".txt") ? (
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                onClick={() => openTextEditor(node)}
+                                title={text.editText}
+                              >
+                                <FilePenLine className="size-4" />
+                              </Button>
+                            ) : null}
+
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => openRenameDialog(node)}
+                              title={text.rename}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => setDeleteTargets([node])}
+                              title={text.delete}
+                            >
+                              <Trash2 className="size-4 text-rose-600" />
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {nodes.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={7} className="py-10 text-center text-sm text-slate-500">
-                            {isAuthenticated ? text.emptyFolder : text.emptyBeforeConnect}
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        nodes.map((node) => (
-                          <TableRow key={node.key}>
-                            <TableCell className="text-center">
-                              <input
-                                type="checkbox"
-                                checked={selectedKeys.includes(node.key)}
-                                onChange={() => toggleSelection(node.key)}
-                              />
-                            </TableCell>
-                            <TableCell className="max-w-[220px] truncate font-medium">
-                              {node.type === "folder" ? (
-                                <button
-                                  type="button"
-                                  className="text-left text-sky-700 hover:underline"
-                                  onClick={() => connectAndLoad(node.key, { silentSuccess: true })}
-                                >
-                                  {node.name}
-                                </button>
-                              ) : (
-                                node.name
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={node.type === "folder" ? "secondary" : "outline"}>
-                                {node.type === "folder" ? text.typeFolder : text.typeFile}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>{node.type === "folder" ? "-" : formatBytes(node.size)}</TableCell>
-                            <TableCell>{formatTimestamp(node.lastModified, locale)}</TableCell>
-                            <TableCell>
-                              {node.type === "folder" ? (
-                                "-"
-                              ) : (
-                                <Badge variant={visibilityByKey[node.key] === "public" ? "default" : "outline"}>
-                                  {visibilityByKey[node.key] === "public" ? (
-                                    <Globe className="mr-1 size-3" />
-                                  ) : (
-                                    <Lock className="mr-1 size-3" />
-                                  )}
-                                  {getVisibilityLabel(visibilityByKey[node.key] ?? "unknown")}
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  onClick={() => copyPublicLink(node)}
-                                  title={text.copyLink}
-                                >
-                                  <Link2 className="size-4" />
-                                </Button>
-
-                                {node.type === "file" && node.name.toLowerCase().endsWith(".txt") ? (
-                                  <Button
-                                    size="icon-sm"
-                                    variant="ghost"
-                                    onClick={() => openTextEditor(node)}
-                                    title={text.editText}
-                                  >
-                                    <FilePenLine className="size-4" />
-                                  </Button>
-                                ) : null}
-
-                                <Button
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  onClick={() => openRenameDialog(node)}
-                                  title={text.rename}
-                                >
-                                  <Pencil className="size-4" />
-                                </Button>
-
-                                <Button
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  onClick={() => setDeleteTargets([node])}
-                                  title={text.delete}
-                                >
-                                  <Trash2 className="size-4 text-rose-600" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </ScrollArea>
-              </TabsContent>
-
-              <TabsContent value="about" className="space-y-3 pt-3 text-sm text-slate-700">
-                <p>{text.operationsSummary}</p>
-                <p>
-                  {text.activeFolder}: <span className="font-medium">/{currentPrefix || ""}</span>
-                </p>
-                {uploadProgress ? <p>{text.uploadProgress(uploadProgress.done, uploadProgress.total)}</p> : null}
-              </TabsContent>
-            </Tabs>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </ScrollArea>
           </CardContent>
         </Card>
 
         <footer className="rounded-xl border border-white/60 bg-white/75 px-4 py-3 text-center text-sm text-slate-600 backdrop-blur-sm">
-          {text.productBy}
+          <span>{locale === "tr" ? "Gelistiren:" : "Built by:"} </span>
+          <a
+            href="https://webisso.com"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-sky-700 underline-offset-2 hover:underline"
+          >
+            WebissoLLC
+          </a>
+          <span>{` | ver: ${import.meta.env.VITE_APP_VERSION ?? "dev"}`}</span>
         </footer>
       </div>
 
-      <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
+      <Dialog
+        open={isUploadModalOpen}
+        onOpenChange={(open) => {
+          setIsUploadModalOpen(open)
+          if (!open) {
+            setUploadDrafts([])
+            setUploadMode("batch")
+            setBulkUploadVisibility("private")
+          }
+        }}
+      >
         <DialogContent className="top-[10px] left-[10px] right-[10px] bottom-[10px] h-auto w-auto max-w-none translate-x-0 translate-y-0 overflow-hidden rounded-2xl p-0 sm:max-w-none">
           <div className="flex h-full flex-col">
             <div className="border-b bg-gradient-to-r from-cyan-50 via-sky-50 to-white px-5 py-4">
@@ -1651,7 +1659,7 @@ function App() {
                   </div>
                 ) : (
                   <ScrollArea className="h-full rounded-xl border bg-white">
-                    <Table>
+                    <Table className="min-w-[980px]">
                       <TableHeader>
                         <TableRow>
                           <TableHead>{text.uploadFileName}</TableHead>
@@ -1728,12 +1736,13 @@ function App() {
                               <TableCell className="text-right">
                                 <Button
                                   size="sm"
-                                  variant="ghost"
+                                  variant="destructive"
                                   disabled={item.status === "uploading" || busyMessage !== null}
                                   onClick={() =>
                                     setUploadDrafts((prev) => prev.filter((draft) => draft.id !== item.id))
                                   }
                                 >
+                                  <Trash2 className="size-4" />
                                   {text.uploadRemoveFile}
                                 </Button>
                               </TableCell>
@@ -1747,7 +1756,8 @@ function App() {
               </div>
             </div>
 
-            <DialogFooter className="border-t bg-white px-4 py-3">
+            <div className="shrink-0 border-t bg-white px-4 py-2.5">
+              <div className="flex items-center justify-end gap-2">
               <input
                 ref={uploadPickerRef}
                 type="file"
@@ -1765,7 +1775,8 @@ function App() {
                 <Upload className="size-4" />
                 {text.uploadStart}
               </Button>
-            </DialogFooter>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

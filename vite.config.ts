@@ -1,10 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import fs from 'node:fs'
 import path from 'node:path'
-import { Readable } from 'node:stream'
 import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+
+const pkgJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8')) as {
+  version?: string
+}
 
 /**
  * Dev-only CORS bypass proxy (Vite plugin).
@@ -126,13 +130,10 @@ function spacesProxyPlugin(): Plugin {
             responseHeaders[key] = value
           })
 
+          const responseBuffer = Buffer.from(await upstream.arrayBuffer())
+          responseHeaders['content-length'] = String(responseBuffer.byteLength)
           res.writeHead(upstream.status, responseHeaders)
-
-          if (upstream.body) {
-            Readable.fromWeb(upstream.body as globalThis.ReadableStream<Uint8Array>).pipe(res)
-          } else {
-            res.end()
-          }
+          res.end(responseBuffer)
         } catch (err) {
           if (!res.headersSent) {
             res.statusCode = 502
@@ -147,6 +148,9 @@ function spacesProxyPlugin(): Plugin {
 // https://vite.dev/config/
 export default defineConfig({
   base: process.env.NODE_ENV === 'production' ? '/cloudstorage-filemanager/' : '/',
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkgJson.version ?? '0.0.0'),
+  },
   plugins: [react(), tailwindcss(), spacesProxyPlugin()],
   resolve: {
     alias: {
